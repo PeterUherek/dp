@@ -6,12 +6,10 @@ require 'lfs'
 require 'pca2.lua'
 require 'gnuplot'
 
--- utils
---require 'utils.functions'
---require 'utils.lfs'
 local params = {batch_size=20,
                 seq_length=5,
                 layers=2,
+                size_of_input=528,
                 decay=2,
                 rnn_size=200,
                 dropout=0,
@@ -25,12 +23,13 @@ local params = {batch_size=20,
                 print_every=1
               }
 
+-- Load Data from CSV
 function load()
   -- Read data from CSV to tensor
   local csvFile = io.open("test.csv", 'r')  
   local header = csvFile:read()
 
-  data = torch.Tensor(params.seq_length, 528)
+  data = torch.Tensor(params.seq_length, params.size_of_input)
 
   local i = 0  
   for line in csvFile:lines('*l') do  
@@ -50,44 +49,27 @@ function load()
 end
 
 
-local size_of_networks = {250,250,528}
-
-LSTM = require 'dp.lua'
-local model_utils=require 'model_utils'
-
--- 3-layer LSTM network (input and output have 3 dimensions)
-network = {LSTM.create(528, 250), LSTM.create(250, 250), LSTM.create(250, 528)}
-
-local para, grad_params = model_utils.combine_all_parameters(network[1], network[2], network[3])
-para:uniform(-0.08, 0.08)
-
--- network input previous states
-previous_state = {
-  {torch.zeros(1, 250), torch.zeros(1,250)},
-  {torch.zeros(1, 250), torch.zeros(1,250)},
-  {torch.zeros(1, 528), torch.zeros(1,528)}
-}
-
+-- Forward and Backward pass through network
 function fbbf(para_)
   if para_ ~= para then
       para:copy(para_)
   end
     grad_params:zero()
-
+ 
   local output = nil
-  local next_state = torch.Tensor(params.seq_length, 528)
+  local predicted_data = torch.Tensor(params.seq_length, params.size_of_input)
   local input = {}
   local loss = 0
   local data = load()
- -- print(data)
-  -- iteration
+
+  -- iteration 
   for y = 1, params.seq_length-1 do
       print(y)
     -- network input
-    --local x = torch.randn(1, 528)
     local criterion = nn.MSECriterion()
-     --print(x)
-    data_input = data[y]:resize(1,528)
+
+    data_input = data[y]:resize(1,params.size_of_input)
+
     -- forward pass through networks layers 
     layer_input = {data_input, table.unpack(previous_state[1])}
     for l = 1, #network do
@@ -117,23 +99,18 @@ function fbbf(para_)
       end
     end
 
-    local target = data[y+1]:resize(1,528)
-   -- local target = data[y+1]:resize(1,528)
+    local target = data[y+1]:resize(1,params.size_of_input)
     loss = loss + criterion:forward(output, target)
 
-    next_state[y]=output
+    predicted_data[y] = output
     dOutput = criterion:backward(layer_output[2], target) 
   end
 
-print(next_state)
-  --print(data)
-  data = data:resize(528,5)
- --next_state = torch.Tensor(next_state)
-  print(next_state)
-  next_state = next_state:resize(528,5)
+  data = data:resize(params.size_of_input,5)
+  predicted_data = predicted_data:resize(params.size_of_input,5)
 
   original_reduced = pca(data,3,100)
-  predicted = pca(next_state,3,100)
+  predicted = pca(predicted_data,3,100)
 
     gnuplot.plot{
      {'original',original_reduced:squeeze(),'+'},
@@ -150,19 +127,7 @@ print(next_state)
        answer=io.read()
     until answer=="y" or answer=="q"
 
-  -- local dRnnState = {[#network] = utils.cloneList(previous_state, true)}
-  -- print(dRnnState)
-
-  --local input = torch.Tensor(1,3):fill(1)
- 
-
-  --print(string.format("target is %s",target))
-   --print(next_state)
-   --print(input)
- 
-  -- backprop through loss, and softmax/linear
-
-    -- backward pass through networks layers 
+  -- backward pass through networks layers 
   for t = #network, 1, -1 do -- reversed loop
       local derr = torch.ones(1,size_of_networks[t])
       local dInputT = {derr,dOutput[1]}
@@ -172,11 +137,6 @@ print(next_state)
      
       --dOutputT  = torch.Tensor(dOutputT)
       dOutput = network[t]:backward(input[t], dInputT)  
-
-      print("Tuto bude loss")
-     -- print(loss)
-      
-      print(dInputT)
   end
 
   -- clip gradient element-wise
@@ -184,6 +144,26 @@ print(next_state)
   print(loss)
   return loss, grad_params
 end
+
+
+-- initalization of network
+local size_of_networks = {250,250,528}
+
+LSTM = require 'model.lua'
+local model_utils=require 'model_utils'
+
+-- 3-layer LSTM network (input and output have 3 dimensions)
+network = {LSTM.create(528, 250), LSTM.create(250, 250), LSTM.create(250, 528)}
+
+local para, grad_params = model_utils.combine_all_parameters(network[1], network[2], network[3])
+para:uniform(-0.08, 0.08)
+
+-- network input previous states
+previous_state = {
+  {torch.zeros(1, 250), torch.zeros(1,250)},
+  {torch.zeros(1, 250), torch.zeros(1,250)},
+  {torch.zeros(1, 528), torch.zeros(1,528)}
+}
 
 -- optimization stuff
 local losses = {}
