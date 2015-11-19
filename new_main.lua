@@ -137,6 +137,7 @@ for line in file:lines('*l') do
        -- TEST OF PREDICTION --            
        -- grab the current row of inputs, and generate prediction
         
+        -- initialise Tensors for validation
         local desired_output = torch.Tensor(batchSize,527)
         local given_output = torch.Tensor(batchSize,527)
 
@@ -153,19 +154,19 @@ for line in file:lines('*l') do
         print("Desirable output: ")
         print(feed_output[1])
       
-        t = m.embedding.tsne(desired_output, {dim=2, perplexity=30})
-        p = m.embedding.tsne(given_output, {dim=2, perplexity=30})
+        -- T-SNE reduciton dimensionality of vectors
+        local d = m.embedding.tsne(desired_output, {dim=2, perplexity=30})
+        local p = m.embedding.tsne(given_output, {dim=2, perplexity=30})
         
+        print('T-SNE for desired outputs:')
+        print(d)
+
         print('T-SNE for predicated outputs:')
         print(p)
 
-        print('T-SNE for desired outputs:')
-        print(t)
-
-
         gnuplot.plot{
-         {'original',p:squeeze(),'+'},
-         {'prediction',t:squeeze(),'+'}
+         {'original',d:squeeze(),'+'},
+         {'prediction',p:squeeze(),'+'}
         }
         gnuplot.axis('equal')
         gnuplot.axis{-20,50,-10,30}
