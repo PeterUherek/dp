@@ -8,14 +8,15 @@ require 'RNN'
 m = require 'manifold'
 --require 'plot_factory'
 
-local threshold = 4330  -- train up to this offset in the file, then predict.
+local threshold = 4310  -- train up to this offset in the file, then predict.
 local inputSize = 530       -- the number features in the csv file to use as inputs 
 local hiddenSize = 529     -- the number of hidden nodes
-local hiddenSize2 = 528     -- the second hidden layer
+local hiddenSize2 = 527     -- the second hidden layer
 local outputSize = 527      -- the number of outputs representing the prediction targat. 
 local dropoutProb = 0.6   -- a dropout probability, might help with generalisation
 local rho = 2000            -- the timestep history we'll recurse back in time when we apply gradient learning
-local batchSize = 10     -- the size of the episode/batch of sequenced timeseries we'll feed the rnn
+local batchSize = 20     -- the size of the episode/batch of sequenced timeseries we'll feed the rnn in the training
+local predictionBatchSize = 20  -- the size of the batch of sequenced timeseries we'll feed the rnn in the validating
 local lr = 0.02        -- the learning rate to apply to the weights
 
 
@@ -31,14 +32,13 @@ tmodel:add(nn.Sequencer(nn.Dropout(dropoutProb)))                      -- I'm st
 tmodel:add(nn.Sequencer(nn.FastLSTM(hiddenSize, hiddenSize2, rho)))      -- creating a second layer of lstm cells
 tmodel:add(nn.Sequencer(nn.Dropout(dropoutProb)))
  
-tmodel:add(nn.Sequencer(nn.Linear(hiddenSize2, outputSize)))           -- reduce the output back down to the output class nodes
-tmodel:add(nn.Sequencer(nn.LogSoftMax()))                             -- apply the log soft max, as we're guessing classes.
+--tmodel:add(nn.Sequencer(nn.Linear(hiddenSize2, outputSize)))           -- reduce the output back down to the output class nodes
+tmodel:add(nn.Sequencer(nn.SoftMax()))                             -- apply the log soft max, as we're guessing classes.
                                                                       -- when used with criterion of ClassNLLCriterion, is effectively CrossEntropy
-
 -- set criterion
                                                                     -- arrays indexed at 1, so target class to be like [1,2], [2,1] not [0,1],[1,0]
---criterion = nn.SequencerCriterion(nn.MSECriterion())              -- if you want a regression, use mse
-criterion = nn.SequencerCriterion(nn.ClassNLLCriterion())           -- if you want a classifier, use this. 
+criterion = nn.SequencerCriterion(nn.MSECriterion())              -- if you want a regression, use mse
+--criterion = nn.SequencerCriterion(nn.ClassNLLCriterion())           -- if you want a classifier, use this. 
 -- criterion = nn.CrossEntropyCriterion()                           -- potential alt for LogSoftMax / ClassNLLCriterion, but you pass it 1d weights (??)
 
 
@@ -76,9 +76,6 @@ feed_output = {}    -- create a table to hold our target outputs to train agains
 --local file = io.open("test.csv", 'r')  
 local file = io.open("data_for_network5.tsv", 'r') 
 
-
-
-
 for line in file:lines('*l') do  
     
     local row = line:split('\t')
@@ -102,7 +99,7 @@ for line in file:lines('*l') do
           data[key] = userCounter -- Number of access
           data[key+1],data[key+2] = please_get_sin_and_cos(row[1]) -- Time in the sinus format and the cosinus fromat
         else
-          data[key+2] = tonumber(val)+1 -- Tfidf value
+          data[key+2] = tonumber(val) -- Tfidf value
         end  
       end
 
@@ -137,15 +134,15 @@ for line in file:lines('*l') do
         
       if offset > threshold and offset % batchSize == 0 then        -- we have now rolled through the timeseries learning, but can we guess the ending?   
                                                                     -- note we are still inside the file iterator. 
-            -- TEST OF PREDICTION --            
-            -- grab the current row of inputs, and generate prediction
+       -- TEST OF PREDICTION --            
+       -- grab the current row of inputs, and generate prediction
         
-        local desired_output = torch.Tensor(10,527)
-        local given_output = torch.Tensor(10,527)
+        local desired_output = torch.Tensor(batchSize,527)
+        local given_output = torch.Tensor(batchSize,527)
 
         local prediction_output = tmodel:forward(feed_input)
         
-        for i=1,10 do
+        for i=1,batchSize do
           given_output[i] = prediction_output[i]
           desired_output[i] = feed_output[i]
         end
@@ -156,9 +153,16 @@ for line in file:lines('*l') do
         print("Desirable output: ")
         print(feed_output[1])
       
-        p = m.embedding.tsne(given_output, {dim=2, perplexity=30})
         t = m.embedding.tsne(desired_output, {dim=2, perplexity=30})
-          
+        p = m.embedding.tsne(given_output, {dim=2, perplexity=30})
+        
+        print('T-SNE for predicated outputs:')
+        print(p)
+
+        print('T-SNE for desired outputs:')
+        print(t)
+
+
         gnuplot.plot{
          {'original',p:squeeze(),'+'},
          {'prediction',t:squeeze(),'+'}
@@ -168,10 +172,10 @@ for line in file:lines('*l') do
         gnuplot.grid(true)
         local answer
         repeat
-           io.write("continue with this operation (y/n)? ")
+           io.write("for continue operation press y")
            io.flush()
            answer=io.read()
-        until answer=="y" or answer=="q"
+        until answer=="y"
 
       end     
     end
