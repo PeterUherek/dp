@@ -33,8 +33,8 @@ tmodel:add(nn.Sequencer(nn.FastLSTM(hiddenSize, hiddenSize2, rho)))      -- crea
 tmodel:add(nn.Sequencer(nn.Dropout(dropoutProb)))
  
 --tmodel:add(nn.Sequencer(nn.Linear(hiddenSize2, outputSize)))           -- reduce the output back down to the output class nodes
-tmodel:add(nn.Sequencer(nn.SoftMax()))                             -- apply the log soft max, as we're guessing classes.
-                                                                      -- when used with criterion of ClassNLLCriterion, is effectively CrossEntropy
+--tmodel:add(nn.Sequencer(nn.SoftMax()))                             -- apply the log soft max, as we're guessing classes.
+                                                                  -- when used with criterion of ClassNLLCriterion, is effectively CrossEntropy
 -- set criterion
                                                                     -- arrays indexed at 1, so target class to be like [1,2], [2,1] not [0,1],[1,0]
 criterion = nn.SequencerCriterion(nn.MSECriterion())              -- if you want a regression, use mse
@@ -138,34 +138,37 @@ for line in file:lines('*l') do
        -- grab the current row of inputs, and generate prediction
         
         -- initialise Tensors for validation
-        local desired_output = torch.Tensor(batchSize,527)
+        local original_output = torch.Tensor(batchSize,527)
         local given_output = torch.Tensor(batchSize,527)
 
         local prediction_output = tmodel:forward(feed_input)
+        local err = criterion:forward(prediction_output, feed_output)
         
         for i=1,batchSize do
           given_output[i] = prediction_output[i]
-          desired_output[i] = feed_output[i]
+          original_output[i] = feed_output[i]
         end
         
-        print("Predicated output: ")
-        print(prediction_output[1])
+        print("Predicated\tOriginal")
+        for i=1, outputSize  do
+          print(string.format('%f\t%f',given_output[1][i],original_output[1][i]))
+        end
+        
+        print('The error rate for this predicated output: ')
+        print(err)
 
-        print("Desirable output: ")
-        print(feed_output[1])
-      
         -- T-SNE reduciton dimensionality of vectors
-        local d = m.embedding.tsne(desired_output, {dim=2, perplexity=30})
+        local o = m.embedding.tsne(original_output, {dim=2, perplexity=30})
         local p = m.embedding.tsne(given_output, {dim=2, perplexity=30})
         
-        print('T-SNE for desired outputs:')
-        print(d)
+        print('T-SNE for original values:')
+        print(o)
 
-        print('T-SNE for predicated outputs:')
+        print('T-SNE for predicated values:')
         print(p)
 
         gnuplot.plot{
-         {'original',d:squeeze(),'+'},
+         {'original',o:squeeze(),'+'},
          {'prediction',p:squeeze(),'+'}
         }
         gnuplot.axis('equal')
@@ -173,7 +176,7 @@ for line in file:lines('*l') do
         gnuplot.grid(true)
         local answer
         repeat
-           io.write("for continue operation press y")
+           io.write("To resume process press y\n")
            io.flush()
            answer=io.read()
         until answer=="y"
