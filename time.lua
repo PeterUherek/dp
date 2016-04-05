@@ -13,7 +13,7 @@ function get_minutes_and_day(str)
   
   local month_day = tonumber(date[3])
 
-  return minutes,week_day,month_day
+  return minutes,week_day,month_day,tonumber(date[2])
 end
 
 function get_day_of_week(dd, mm, yy)
@@ -47,19 +47,19 @@ end
 
 function is_weekend(str)
   
-  local minutes,week_day,month_day = get_minutes_and_day(str)
+  local minutes,week_day,month_day,month = get_minutes_and_day(str)
   local weekend = 0
 
   if week_day == 1 or week_day == 7 then
     weekend = 1
   end
   
-  return weekend
+  return week_day,weekend, month-2
 end
 
 function get_week_day(str)
   local minutes,week_day,month_day = get_minutes_and_day(str)
-  return weekend
+  return week_day
 end
 
 --- [[FUNCTION FOR TASK 3]] ---
